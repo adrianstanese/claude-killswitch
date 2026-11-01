@@ -1,0 +1,11 @@
+{
+  "name": "killswitch",
+  "version": "0.2.0",
+  "description": "Live usage bars above the prompt; at 99% of the 5-hour or weekly limit, snapshot the work and stop everything until the limit resets",
+  "author": {
+    "name": "Adrian Stanese"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/adrianstanese/claude-killswitch",
+  "types": "./types/index.d.ts"
+}

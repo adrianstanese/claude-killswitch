@@ -1,0 +1,5 @@
+{
+  "name": "claude-killswitch",
+  "owner": { "name": "Adrian Stanese" },
+  "plugins": [{ "name": "killswitch", "source": "./" }]
+}
