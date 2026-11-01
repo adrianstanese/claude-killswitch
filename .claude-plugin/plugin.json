@@ -1,11 +1,37 @@
 {
   "name": "killswitch",
-  "version": "0.4.0",
-  "description": "Live usage bars above the prompt; at 99% of the 5-hour or weekly limit, snapshot the work and stop everything until the limit resets",
+  "version": "0.5.0",
+  "description": "Live usage rails, forecast and history; warns at 90%, asks Claude to wrap up at 97%, stops all sessions at 99% of the 5-hour or weekly limit, and resumes after the reset",
   "author": {
     "name": "Adrian Stanese"
   },
   "license": "MIT",
   "repository": "https://github.com/adrianstanese/claude-killswitch",
-  "types": "./types/index.d.ts"
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "threshold": {
+      "type": "number",
+      "title": "Stop at (%)",
+      "description": "The killswitch stops all work when the 5-hour or weekly limit reaches this percent.",
+      "default": 99
+    },
+    "warnAt": {
+      "type": "number",
+      "title": "Warn at (%)",
+      "description": "A heads-up toast when a limit passes this percent.",
+      "default": 90
+    },
+    "wrapUpAt": {
+      "type": "number",
+      "title": "Ask Claude to wrap up at (%)",
+      "description": "Past this percent, Claude is told to finish its current step and keep a handoff note.",
+      "default": 97
+    },
+    "autoResume": {
+      "type": "boolean",
+      "title": "Resume automatically after the reset",
+      "description": "When the limit resets, the stopped session continues the work by itself.",
+      "default": true
+    }
+  }
 }
