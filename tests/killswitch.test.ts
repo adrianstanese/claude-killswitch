@@ -125,3 +125,37 @@ test('the band draws a bar per limit with the killswitch state', async ($, on) =
     await ui.unmount()
   }
 })
+
+test('a reading pulled after a turn trips it, even without a whole-point measurement', async ($, on) => {
+  let weekly = 98.4
+  const aborted: string[] = []
+  on('command.register', (_, e) => ({ value: { command: e.name } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('clock.now', () => ({ value: NOW }))
+  on('clock.sleep', () => new Promise(() => {}))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', () => ({ value: undefined }))
+  on('session.usage', () => ({
+    value: {
+      startedAt: NOW,
+      context: {},
+      rateLimits: [{ kind: 'seven_day', percentUsed: weekly, resetsAt: RESET }],
+    },
+  }))
+  on('process.run', () => ({ value: { exitCode: 1, stdout: '', stderr: '' } }))
+  on('fs.write', () => ({ value: undefined }))
+  on('turn.abort', (_, e) => (aborted.push(e.turnId), { value: undefined }))
+  on('turn.start', (_, e) => ({ text: e.text, turnId: e.turnId }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('tool.call', () => ({ result: {} }))
+
+  await $.session.start({ cwd: '/repo', surface: 'desktop', isInteractive: true })
+  await $.turn.start({ text: 'work', turnId: 't1' })
+  await $.turn.complete({ turnId: 't1', answer: '', durationMs: 1, isAborted: false, reason: 'answer' })
+  expect('deny' in (await $.tool.call({ tool: 'Bash', command: 'ls' }))).toBe(false)
+
+  weekly = 99.1
+  await $.turn.start({ text: 'more work', turnId: 't2' })
+  await $.turn.complete({ turnId: 't2', answer: '', durationMs: 1, isAborted: false, reason: 'answer' })
+  expect('deny' in (await $.tool.call({ tool: 'Bash', command: 'ls' }))).toBe(true)
+})

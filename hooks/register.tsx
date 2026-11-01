@@ -160,9 +160,26 @@ async function setLimits($: $, list: readonly SessionRateLimit[]) {
   await update($, limits, () => list.filter(w => w.kind in WATCHED).map(w => ({ ...w })))
 }
 
+// Trips the killswitch when a watched window is at or past the threshold.
+async function check($: $, list: readonly SessionRateLimit[]) {
+  const c = await read($, config)
+  if (!c.isArmed || c.isTripped) return
+  const hit = over(list, c.threshold)
+  if (hit.length > 0) await trip($, hit, c.threshold)
+}
+
+// The engine pushes a measurement only when a window moves a whole point, so
+// the latest reading is also pulled after each turn and every 30 seconds.
+async function refresh($: $) {
+  const { rateLimits } = await $.session.usage()
+  await setLimits($, rateLimits)
+  await check($, rateLimits)
+}
+
 async function tick($: $) {
   for (;;) {
-    await $.clock.sleep(60_000)
+    await $.clock.sleep(30_000)
+    await refresh($).catch(() => {})
     $.ui.invalidate('ui.render')
   }
 }
@@ -226,11 +243,9 @@ export const register: Register = on => {
   })
 
   on('session.measure', async ($, e, next) => {
-    if (e.changed.includes('rateLimits')) await setLimits($, e.rateLimits)
-    const c = await read($, config)
-    if (c.isArmed && !c.isTripped && e.changed.includes('rateLimits')) {
-      const hit = over(e.rateLimits, c.threshold)
-      if (hit.length > 0) await trip($, hit, c.threshold)
+    if (e.changed.includes('rateLimits')) {
+      await setLimits($, e.rateLimits)
+      await check($, e.rateLimits)
     }
     return next(e)
   })
@@ -245,6 +260,7 @@ export const register: Register = on => {
 
   on('turn.complete', async ($, e, next) => {
     if (e.agentId === undefined) mainTurn = undefined
+    await refresh($).catch(() => {})
     return next(e)
   })
 
@@ -267,9 +283,22 @@ export const register: Register = on => {
     const now = await $.clock.now()
     const { Box, Text } = $.ui.resolve(e)
 
-    // Label (8) + percent (6) + countdown (12) + gaps around the bar.
+    const isTerminal = e.surface === 'terminal'
+    // Label (7) + percent (6) + countdown (17) + gaps around the bar.
     const barWidth = Math.max(8, Math.min(40, e.props.bodyColumns - 34))
     const markAt = Math.min(barWidth - 1, Math.floor((c.threshold / 100) * barWidth))
+    // The terminal draws the bar in block glyphs, with a tick where the killswitch fires.
+    const glyphBar = (pct: number, color: string) => {
+      const filled = Math.round((pct / 100) * barWidth)
+      const empty = Array.from({ length: barWidth - filled }, (_, i) =>
+        c.isArmed && filled + i === markAt ? '│' : '░').join('')
+      return (
+        <Text>
+          <Text color={color}>{'█'.repeat(filled)}</Text>
+          <Text dimColor>{empty}</Text>
+        </Text>
+      )
+    }
 
     const shield = !c.isArmed
       ? <Text dimColor>○ killswitch off</Text>
@@ -289,25 +318,29 @@ export const register: Register = on => {
             return (
               <Box key={kind} gap={1}>
                 <Text dimColor>{label.padEnd(7)}</Text>
-                <Text dimColor>{'·'.repeat(barWidth)} waiting for first reading</Text>
+                <Text dimColor>waiting for the first reading</Text>
               </Box>
             )
           }
           const pct = Math.min(100, w.percentUsed)
-          const filled = Math.round((pct / 100) * barWidth)
           const color = tone(pct)
-          // The empty part shows a tick where the killswitch fires.
-          const empty = Array.from({ length: barWidth - filled }, (_, i) =>
-            c.isArmed && filled + i === markAt ? '│' : '░').join('')
+          const shown = `${Number.isInteger(pct) ? pct : pct.toFixed(1)}%`
+          const resets = w.resetsAt ? `resets in ${countdown(w.resetsAt, now)}` : ''
           return (
-            <Box key={kind} gap={1}>
-              <Text>{label.padEnd(7)}</Text>
-              <Text>
-                <Text color={color}>{'█'.repeat(filled)}</Text>
-                <Text dimColor>{empty}</Text>
-              </Text>
-              <Text color={color} bold>{`${pct.toFixed(0)}%`.padStart(4)}</Text>
-              <Text dimColor>{w.resetsAt ? `resets in ${countdown(w.resetsAt, now)}` : ''}</Text>
+            <Box key={kind} gap={1} alignItems="center" flexWrap="nowrap">
+              <Box width={7} flexShrink={0}><Text>{label}</Text></Box>
+              {isTerminal ? glyphBar(pct, color) : (
+                // A graphical surface draws a solid track and fill, as wide as the row allows.
+                <Box flexGrow={1} height={1} backgroundColor="subtle" overflow="hidden">
+                  <Box width={`${pct}%`} backgroundColor={color}><Text> </Text></Box>
+                </Box>
+              )}
+              <Box width={6} flexShrink={0} justifyContent="flex-end">
+                <Text color={color} bold>{shown}</Text>
+              </Box>
+              <Box width={17} flexShrink={0}>
+                <Text dimColor wrap="truncate">{resets}</Text>
+              </Box>
             </Box>
           )
         })}
