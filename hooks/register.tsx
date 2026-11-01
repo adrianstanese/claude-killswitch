@@ -145,6 +145,9 @@ const BAND_ROWS: Array<[kind: string, label: string]> = [
 const tone = (pct: number) =>
   pct >= 90 ? 'error' : pct >= 70 ? 'warning' : 'success'
 
+// An SVG is drawn as an image, outside the theme, so its colours are literal.
+const RAIL_FILL = { success: '#4caf50', warning: '#e0a030', error: '#e5534b' } as const
+
 function countdown(resetsAt: string | undefined, now: number) {
   if (!resetsAt) return ''
   const mins = Math.max(0, Math.round((Date.parse(resetsAt) - now) / 60_000))
@@ -281,69 +284,73 @@ export const register: Register = on => {
     const list = await read($, limits)
     const c = await read($, config)
     const now = await $.clock.now()
-    const { Box, Text } = $.ui.resolve(e)
+    const ui = $.ui.resolve(e)
+    const { Box, Text } = ui
+    const width = e.props.bodyColumns
 
-    const isTerminal = e.surface === 'terminal'
-    // Label (7) + percent (6) + countdown (17) + gaps around the bar.
-    const barWidth = Math.max(8, Math.min(40, e.props.bodyColumns - 34))
-    const markAt = Math.min(barWidth - 1, Math.floor((c.threshold / 100) * barWidth))
-    // The terminal draws the bar in block glyphs, with a tick where the killswitch fires.
-    const glyphBar = (pct: number, color: string) => {
-      const filled = Math.round((pct / 100) * barWidth)
-      const empty = Array.from({ length: barWidth - filled }, (_, i) =>
-        c.isArmed && filled + i === markAt ? '│' : '░').join('')
+    // The terminal's rail: a thin line of box-drawing glyphs, a tick at the threshold.
+    const glyphRail = (pct: number, color: string) => {
+      const cells = Math.max(10, width)
+      const filled = Math.round((pct / 100) * cells)
+      const markAt = Math.min(cells - 1, Math.floor((c.threshold / 100) * cells))
+      const rest = Array.from({ length: cells - filled }, (_, i) =>
+        c.isArmed && filled + i === markAt ? '┃' : '─').join('')
       return (
         <Text>
-          <Text color={color}>{'█'.repeat(filled)}</Text>
-          <Text dimColor>{empty}</Text>
+          <Text color={color}>{'━'.repeat(filled)}</Text>
+          <Text dimColor>{rest}</Text>
         </Text>
       )
+    }
+
+    // A graphical surface's rail: a 4px SVG stretched across the row.
+    const svgRail = (pct: number, kind: string) => {
+      const fill = RAIL_FILL[tone(pct)]
+      const mark = c.isArmed
+        ? `<rect x="${c.threshold * 10 - 2}" y="0" width="4" height="8" fill="#8a8a8a"/>`
+        : ''
+      const source =
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 8" width="1000" height="8" preserveAspectRatio="none">` +
+        `<rect x="0" y="2" width="1000" height="4" rx="2" fill="#8a8a8a" fill-opacity="0.3"/>` +
+        `<rect x="0" y="2" width="${Math.max(4, pct * 10)}" height="4" rx="2" fill="${fill}"/>` +
+        mark +
+        `</svg>`
+      if (!('Svg' in ui)) return glyphRail(pct, tone(pct))
+      const { Svg } = ui
+      return <Svg key={`${kind}-rail`} source={source} alt={`${pct.toFixed(1)}% used`} height={6} />
     }
 
     const shield = !c.isArmed
       ? <Text dimColor>○ killswitch off</Text>
       : c.isTripped
         ? <Text color="error" bold>■ STOPPED until {when(c.resumesAt)}</Text>
-        : <Text color="success">● killswitch armed at {c.threshold}%</Text>
+        : <Text color="success">◆ killswitch armed at {c.threshold}%</Text>
 
     return (
-      <Box flexDirection="column">
-        <Box gap={1}>
-          <Text bold color="claude">⏻ Usage</Text>
-          {shield}
-        </Box>
+      <Box flexDirection="column" gap={0}>
         {BAND_ROWS.map(([kind, label]) => {
           const w = list.find(x => x.kind === kind)
-          if (w === undefined) {
-            return (
-              <Box key={kind} gap={1}>
-                <Text dimColor>{label.padEnd(7)}</Text>
-                <Text dimColor>waiting for the first reading</Text>
-              </Box>
-            )
-          }
-          const pct = Math.min(100, w.percentUsed)
+          const pct = w ? Math.min(100, w.percentUsed) : 0
           const color = tone(pct)
-          const shown = `${Number.isInteger(pct) ? pct : pct.toFixed(1)}%`
-          const resets = w.resetsAt ? `resets in ${countdown(w.resetsAt, now)}` : ''
+          const resets = w?.resetsAt ? ` · resets ${countdown(w.resetsAt, now)}` : ''
           return (
-            <Box key={kind} gap={1} alignItems="center" flexWrap="nowrap">
-              <Box width={7} flexShrink={0}><Text>{label}</Text></Box>
-              {isTerminal ? glyphBar(pct, color) : (
-                // A graphical surface draws a solid track and fill, as wide as the row allows.
-                <Box flexGrow={1} height={1} backgroundColor="subtle" overflow="hidden">
-                  <Box width={`${pct}%`} backgroundColor={color}><Text> </Text></Box>
-                </Box>
-              )}
-              <Box width={6} flexShrink={0} justifyContent="flex-end">
-                <Text color={color} bold>{shown}</Text>
+            <Box key={kind} flexDirection="column" marginBottom={e.surface === 'terminal' ? 0 : 1}>
+              <Box justifyContent="space-between" flexWrap="nowrap">
+                <Text dimColor>{label}</Text>
+                {w === undefined ? (
+                  <Text dimColor>waiting for the first reading</Text>
+                ) : (
+                  <Text wrap="truncate">
+                    <Text color={color}>{`${pct.toFixed(1)}%`}</Text>
+                    <Text dimColor>{resets}</Text>
+                  </Text>
+                )}
               </Box>
-              <Box width={17} flexShrink={0}>
-                <Text dimColor wrap="truncate">{resets}</Text>
-              </Box>
+              {e.surface === 'terminal' ? glyphRail(pct, color) : svgRail(pct, kind)}
             </Box>
           )
         })}
+        {shield}
       </Box>
     )
   })

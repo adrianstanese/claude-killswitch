@@ -27,7 +27,7 @@ A Claude Code mod. It arms itself at 99% in every session, with nothing to run. 
 3. writes a resume note to `<cwd>/.claude/killswitch/<time>.md` with the limit, the reset time, the last request and the restore command,
 4. blocks every tool call and every new prompt until the limit's reset time. After that it lifts the block by itself.
 
-Above the prompt, a live band shows one bar each for the 5-hour and weekly limits: green under 70%, amber under 90%, red above. Each bar has a tick at the killswitch threshold, the percent, and a countdown to the reset.
+Above the prompt, two slim rails show the 5-hour and weekly limits: green under 70%, amber under 90%, red above, with the percent to one decimal, a tick at the killswitch threshold, and a countdown to the reset. Readings refresh after each turn and every 30 seconds.
 
 | Command | Effect |
 | --- | --- |

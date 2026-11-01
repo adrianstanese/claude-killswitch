@@ -119,9 +119,12 @@ test('the band draws a bar per limit with the killswitch state', async ($, on) =
       },
     })
     expect((await ui.find({ type: 'Text', text: /armed at 99%/ }))?.text).toContain('armed')
-    expect((await ui.find({ type: 'Text', text: /98%/ }))?.text).toContain('98%')
-    expect((await ui.find({ type: 'Text', text: /resets in 7h 0m/ }))?.text).toBe('resets in 7h 0m')
-    expect((await ui.find({ type: 'Text', text: /resets in 2h 10m/ }))?.text).toBe('resets in 2h 10m')
+    expect((await ui.find({ type: 'Text', text: /98\.0%/ }))?.text).toContain('98.0%')
+    expect((await ui.find({ type: 'Text', text: /resets 7h 0m/ }))?.text).toContain('resets 7h 0m')
+    expect((await ui.find({ type: 'Text', text: /resets 2h 10m/ }))?.text).toContain('resets 2h 10m')
+    if (surface === 'desktop') {
+      expect(await ui.find({ type: 'Svg' })).toBeTruthy()
+    }
     await ui.unmount()
   }
 })
